@@ -3,7 +3,7 @@ GitAttributesDB
 This is a git hook to store/restore attributes (ownerships, permissions and - on Linux - ACLs) for files stored in a git repository, and for any extra
 files configured for attribute store/restore.
 
-This hook can be used in place of programs such as *etckeeper* to automatically (once set up) record and restore the attributes for files in your `/etc`
+This hook can be used in place of programs such as **etckeeper** to automatically (once set up) record and restore the attributes for files in your `/etc`
 directory.
 
 I prefer this script over `etckeeper` as, once set up correctly, it is far simpler and completely automated - you do not need to run a command every time
@@ -18,7 +18,7 @@ version control.
 As part of the initial set up, the hooks directory will be changed to be the `.githooks/` directory inside the repository root, and hooks inside that
 directory put under version control - just like any files in the repository.
 
-The `gitattributesdb` git repository will be cloned under that directory as a git *submodule*, where the script can be called directly by the appropriate
+The `gitattributesdb` git repository will be cloned under that directory as a git **submodule**, where the script can be called directly by the appropriate
 hook files.
 
 Firstly, create the `.githooks/` subdirectory in your current or new git repository:
@@ -81,7 +81,7 @@ Whenever you commit changes to the repository, or pull new changes from a remote
 
 Set Up After A New Clone
 ------------------------
-Git does *not* store the local configuration on the remote when you push your changes.  This means that the configuration to set the hooks directory is
+Git does **not** store the local configuration on the remote when you push your changes.  This means that the configuration to set the hooks directory is
 lost when the repository is cloned fresh.
 
 It also does not automatically pull any embedded submodules into the repository.
@@ -93,7 +93,7 @@ git submodule update --init
 git config --local core.hooksPath .githooks
 ```
 
-This will clone the *exact* commit of `gitattributesdb` that was originally added to the repository - it does not track the branch itself, so changes at the
+This will clone the **exact** commit of `gitattributesdb` that was originally added to the repository - it does not track the branch itself, so changes at the
 HEAD of the branch are not reflected in the clone.  In order to get the latest changes, use the update procedure detailed below.
 
 Once these commands have been run in the newly cloned repository (that has been initialised by the above procedure), everything is set for
@@ -105,7 +105,7 @@ Updating The Embedded `gitattributesdb` Submodule
 From time to time it is a good idea to merge any changes from the remote branch into your local submodule of `gitattributesdb`.
 This allows you to pick up any fixes or updates to the tree.
 
-To update the submodule *from the root of the git repository*, use:
+To update the submodule **from the root of the git repository**, use:
 ```
 (cd .githooks/gitatrributesdb && git fetch && git merge origin/master)
 ```
@@ -115,7 +115,7 @@ The submodule will now have been updated to track the latest changes in the remo
 
 Tracking Extra Files
 --------------------
-`gitattributesdb` has the ability to store/restore the attributes of extra files on the filesystem that are *not* tracked in the git repository.
+`gitattributesdb` has the ability to store/restore the attributes of extra files on the filesystem that are **not** tracked in the git repository.
 
 This is useful, for example, to track the attributes of `/etc/shadow`, without checking that file itself into git (and thus storing sensitive data in a
 potentially publicly accessible git repository).

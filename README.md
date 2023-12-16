@@ -6,7 +6,7 @@ files configured for attribute store/restore.
 This hook can be used in place of programs such as **etckeeper** to automatically (once set up) record and restore the attributes for files in your `/etc`
 directory.
 
-I prefer this script over `etckeeper` as, once set up correctly, it is far simpler and completely automated - you do not need to run a command every time
+I prefer this script over **etckeeper** as, once set up correctly, it is far simpler and completely automated - you do not need to run a command every time
 you commit or pull changes to your `/etc` git repository.
 
 
@@ -31,9 +31,9 @@ And add the `gitattributesdb` repository as a submodule inside the `.githooks/` 
 git submodule add https://github.com/tadgy/gitattributesdb.git .githooks/gitattributesdb
 ```
 
-Oncw the `gitattributesdb` submodule is cloned, git hook scripts need to be added.
+Once the `gitattributesdb` submodule is cloned, git hook scripts need to be added.
 
-You may already have hooks stored in the `.git/hooks/` directory - these will need to be moved into the `.githooks/` directory.
+You may already have hooks stored in the `.git/hooks/` directory - these will need to be moved into the `.githooks/` directory.  
 This command is only required if you already have hooks in your local copy of the repository:
 ```
 mv .git/hooks/* .githooks/
@@ -42,7 +42,7 @@ mv .git/hooks/* .githooks/
 `gitattributesdb` needs to be "hooked into" 3 git hook files: `post-checkout`, `post-merge` and `pre-commit`.
 You may already have these files in the `.githooks/` directory, since they may have been moved from the `.git/hooks/` directory previously.
 
-If you already have those files, you only need to add the syntax to run the `gitattributesdb` script to each of those hook files.
+If you already have those files, you only need to add the syntax to run the `gitattributesdb` script to each of those hook files.  
 Add the following in an appropriate place in those 3 files:
 ```
 .githooks/gitattributsdb/gitattributsdb "${0##*/}"
@@ -59,7 +59,7 @@ each file:
 ```
 #!/usr/bin/env bash
 
-# Store/restore the attributes of files in the repository:
+# Store/restore the attributes of files:
 .githooks/gitattributesdb/gitattributsdb "${0##*/}"
 ```
 Save the changes to each file.
@@ -75,7 +75,7 @@ git add .gitmodules .githooks/
 git commit -m "Added .gitmodules file, and .githooks/ directory as the git hooks directory."
 ```
 
-Initial set up of the repository to use `gitattributesdb` is complete.
+Initial set up of the repository to use `gitattributesdb` is complete.  
 Whenever you commit changes to the repository, or pull new changes from a remote, the file attributes will be stored/restored.
 
 
@@ -93,8 +93,8 @@ git submodule update --init
 git config --local core.hooksPath .githooks
 ```
 
-This will clone the **exact** commit of `gitattributesdb` that was originally added to the repository - it does not track the branch itself, so changes at the
-HEAD of the branch are not reflected in the clone.  In order to get the latest changes, use the update procedure detailed below.
+This will clone the **exact** commit of `gitattributesdb` that was originally added to the repository - it does not track the branch itself, so changes at
+the `HEAD` of the branch are not reflected in the clone.  In order to get the latest changes, use the update procedure detailed below.
 
 Once these commands have been run in the newly cloned repository (that has been initialised by the above procedure), everything is set for
 `gitattributesdb` to maintain the attributes for files.
@@ -102,12 +102,12 @@ Once these commands have been run in the newly cloned repository (that has been 
 
 Updating The Embedded `gitattributesdb` Submodule
 -------------------------------------------------
-From time to time it is a good idea to merge any changes from the remote branch into your local submodule of `gitattributesdb`.
+From time to time it is a good idea to merge any changes from the remote branch into your local submodule of `gitattributesdb`.  
 This allows you to pick up any fixes or updates to the tree.
 
 To update the submodule **from the root of the git repository**, use:
 ```
-(cd .githooks/gitatrributesdb && git fetch && git merge origin/master)
+(cd .githooks/gitatrributesdb/ && git fetch && git merge origin/master)
 ```
 
 The submodule will now have been updated to track the latest changes in the remote "master" branch.

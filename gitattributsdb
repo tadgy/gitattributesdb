@@ -73,7 +73,7 @@ store_attributes() {
   log "Storing file attributes into database"
 
   # Use a temporary file for the new database.
-  DB_TMP="$(mktmp "$DB_FILE.XXXXXX" 2>/dev/null)" || error "Failed to create temporary database file"
+  DB_TMP="$(mktemp "$DB_FILE.XXXXXX" 2>/dev/null)" || error "Failed to create temporary database file"
 
   # While Darwin supports ACLs, there is no standard output and input format for them - don't even try.
   [[ "$PLATFORM" == "Darwin" ]] && warn "Not storing ACLs on Darwin"
@@ -104,7 +104,7 @@ store_attributes() {
   # Move the temporary file into place.
   mv -- "$DB_TMP" "$DB_FILE" 2>/dev/null || { rm -f -- "$DB_TMP"; error "Failed to move database temporary file into place"; }
 
-  info "$COUNT entries stored"
+  log "$COUNT entries stored"
 
   # Add the databases themselves to the commit.
   git add --all -f -- "$DB_EXTRA" 2>/dev/null	# OK to fail silently.
@@ -151,7 +151,7 @@ restore_attributes() {
     (( COUNT++ ))
   done < <(printf "%s\\n" "${!DB_OWNERSHIPS[@]}")
 
-  info "$COUNT entries restored"
+  log "$COUNT entries restored"
 
   return 0
 }

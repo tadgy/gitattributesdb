@@ -11,7 +11,7 @@ DB_EXTRA=".gitattributsdb-extra"	# List of base64 encoded filenames (one per lin
 					# Where '<filename>' is relative to the repository root.
 
 # Variables.
-declare -A DB_OWNERSHIPS DB_MODES DB_ACLS
+declare -A DB_ACLS DB_ATIMES DB_MODES DB_MTIMES DB_OWNERSHIPS
 # shellcheck disable=SC2155
 declare PLATFORM="$(uname -s)"
 
@@ -49,14 +49,16 @@ show_help() {
 
 # Function to read the database into an array.
 read_db() {
-  local FILENAME MODE OWNERSHIP ACL
+  local ACL ATIME FILENAME MODE MTIME OWNERSHIP
 
   # Do nothing if the DB file doesn't exist.
   [[ ! -e "$DB_FILE" ]] && return 0
 
   # Read the file.
-  while read -r FILENAME OWNERSHIP MODE ACL; do
+  while read -r FILENAME MTIME ATIME OWNERSHIP MODE ACL; do
     # Store the attributes in arrays.
+    DB_MTIMES[$FILENAME]="$MTIME"
+    DB_ATIMES[$FILENAME]="$ATIME"
     DB_OWNERSHIPS[$FILENAME]="$OWNERSHIP"
     DB_MODES[$FILENAME]="$MODE"
     DB_ACLS[$FILENAME]="$ACL"
@@ -89,12 +91,12 @@ store_attributes() {
 
     if [[ "$PLATFORM" == "Linux" ]]; then
       # On Linux, we can handle ACLs too.
-      printf "%s %s %s\\n" "$(printf "%s" "$FILE" | base64 -w 0 2>/dev/null)" "$(stat --printf '%U:%G %.4a' -- "$FILE" 2>/dev/null)" \
+      printf "%s %s %s\\n" "$(printf "%s" "$FILE" | base64 -w 0 2>/dev/null)" "$(stat --printf '%.9Y %.9X %U:%G %.4a' -- "$FILE" 2>/dev/null)" \
           "$(getfacl -cEsp -- "$FILE" 2>/dev/null | base64 -w 0 2>/dev/null)" >>"$DB_TMP"
     elif [[ "$PLATFORM" == "Darwin" ]]; then
       # Darwin just has to be different.
       # Use the full path to Darwin's stat, in case there's a macports/brew/etc version installed.
-      printf "%s %s\\n" "$(printf "%s" "$FILE" | base64 2>/dev/null)" "$(/usr/bin/stat -f "%Su:%Sg %Mp%Lp" -- "$FILE" 2>/dev/null)" >>"$DB_TMP"
+      printf "%s %s\\n" "$(printf "%s" "$FILE" | base64 -b 0 2>/dev/null)" "$(/usr/bin/stat -f '%Fm %Fa %Su:%Sg %Mp%Lp' -- "$FILE" 2>/dev/null)" >>"$DB_TMP"
     fi
 
     (( COUNT++ ))
@@ -144,9 +146,18 @@ restore_attributes() {
     chmod -- "${DB_MODES[$ID]}" "$FILE" 2>/dev/null || warn "Failed to restore permissions: $FILE"
 
     # Restore ACLs on Linux.
-    [[ "$PLATFORM" == "Linux" ]] && {
-      printf "%s" "${DB_ACLS[$ID]}" | base64 -d 2>/dev/null | setfacl -M - "$FILE" 2>/dev/null || warn "Failed to restore ACL: $FILE"
-    }
+    if [[ "$PLATFORM" == "Linux" ]]; then
+      touch -m --date="$(date --date="19700101 00:00:00 + ${DB_MTIMES[$ID]} seconds" +'%Y/%m/%d %H:%M:%S.%N' 2>/dev/null)" -- "$FILE" 2>/dev/null || \
+          warn "Failed to restore mtime: $FILE"
+      touch -a --date="$(date --date="19700101 00:00:00 + ${DB_ATIMES[$ID]} seconds" +'%Y/%m/%d %H:%M:%S.%N' 2>/dev/null)" -- "$FILE" 2>/dev/null || \
+          warn "Failed to restore atime: $FILE"
+      printf "%s" "${DB_ACLS[$ID]}" | base64 -d 2>/dev/null | setfacl -M - -- "$FILE" 2>/dev/null || warn "Failed to restore ACLs: $FILE"
+    elif [[ "$PLATFORM" == "Darwin" ]]; then
+      touch -m -d "$(date -j -r "${DB_MTIMES[$ID]%.*}" +"%Y-%m-%dT%H:%M:%S.${DB_MTIMES[$ID]#*.}")" -- "$FILE" 2>/dev/null || \
+          warn "Failed to restore mtime: $FILE"
+      touch -a -d "$(date -j -r "${DB_MTIMES[$ID]%.*}" +"%Y-%m-%dT%H:%M:%S.${DB_MTIMES[$ID]#*.}")" -- "$FILE" 2>/dev/null || \
+          warn "Failed to restore atime: $FILE"
+    fi
 
     (( COUNT++ ))
   done < <(printf "%s\\n" "${!DB_OWNERSHIPS[@]}")

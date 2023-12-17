@@ -1,7 +1,7 @@
 GitAttributesDB
 ===============
-This is a git hook to store/restore attributes (ownerships, permissions and - on Linux - ACLs) for files stored in a git repository, and for any extra
-files configured for attribute store/restore.
+This is a git hook to store/restore attributes (access/modification times, ownerships, permissions and - on Linux - ACLs) for files stored in a git
+repository, and for any extra files configured for attribute store/restore.
 
 This hook can be used in place of programs such as **etckeeper** to automatically (once set up) record and restore the attributes for files in your `/etc`
 directory.

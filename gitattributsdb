@@ -155,7 +155,7 @@ restore_attributes() {
     elif [[ "$PLATFORM" == "Darwin" ]]; then
       touch -m -d "$(date -j -r "${DB_MTIMES[$ID]%.*}" +"%Y-%m-%dT%H:%M:%S.${DB_MTIMES[$ID]#*.}")" -- "$FILE" 2>/dev/null || \
           warn "Failed to restore mtime: $FILE"
-      touch -a -d "$(date -j -r "${DB_MTIMES[$ID]%.*}" +"%Y-%m-%dT%H:%M:%S.${DB_MTIMES[$ID]#*.}")" -- "$FILE" 2>/dev/null || \
+      touch -a -d "$(date -j -r "${DB_ATIMES[$ID]%.*}" +"%Y-%m-%dT%H:%M:%S.${DB_ATIMES[$ID]#*.}")" -- "$FILE" 2>/dev/null || \
           warn "Failed to restore atime: $FILE"
     fi
 

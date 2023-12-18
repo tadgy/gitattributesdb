@@ -11,7 +11,7 @@ DB_EXTRA=".gitattributsdb-extra"	# List of base64 encoded filenames (one per lin
 					# Where '<filename>' is relative to the repository root.
 
 # Variables.
-declare -A DB_ACLS DB_ATIMES DB_MODES DB_MTIMES DB_OWNERSHIPS
+declare -A DB_ACLS DB_ATIMES DB_MODES DB_MTIMES DB_OWNERSHIPS DB_XATTRS
 # shellcheck disable=SC2155
 declare PLATFORM="$(uname -s)"
 
@@ -41,27 +41,33 @@ show_help() {
 	Store and restore file attributes for files within the git repository from a
 	database stored within the repository itself.
 
-	This program is intended to be called from git hooks, rather than directly.
+	Options:
+	  -h|--help		Display this help page.
 
-	# FIXME: Write some info about using as a submodule and as a hook in .githooks/.
+	<hook name> must be one of: 'post-checkout', 'post-merge' or 'pre-commit', which
+	are the git hook names that call this hook script.  See the README.md file for
+	full installation/usage instructions.
+
+	This program is intended to be called from git hooks, rather than directly.
 	EOF
 }
 
 # Function to read the database into an array.
 read_db() {
-  local ACL ATIME FILENAME MODE MTIME OWNERSHIP
+  local ACL ATIME FILENAME MODE MTIME OWNERSHIP XATTR
 
   # Do nothing if the DB file doesn't exist.
   [[ ! -e "$DB_FILE" ]] && return 0
 
   # Read the file.
-  while read -r FILENAME MTIME ATIME OWNERSHIP MODE ACL; do
+  while read -r FILENAME MTIME ATIME OWNERSHIP MODE ACL XATTR; do
     # Store the attributes in arrays.
     DB_MTIMES[$FILENAME]="$MTIME"
     DB_ATIMES[$FILENAME]="$ATIME"
     DB_OWNERSHIPS[$FILENAME]="$OWNERSHIP"
     DB_MODES[$FILENAME]="$MODE"
     DB_ACLS[$FILENAME]="$ACL"
+    DB_XATTRS[$FILENAME]="$XATTR"
   done < <(grep -Ev '^(#|$)' "$DB_FILE")
 
   return 0
@@ -69,7 +75,7 @@ read_db() {
 
 # Function to store file attributes into the database.
 store_attributes() {
-  local COUNT=0 DB_TMP FILE X
+  local ACL COUNT=0 DB_TMP EXTRA FILE XATTR
 
   # Informational message.
   log "Storing file attributes into database"
@@ -78,7 +84,7 @@ store_attributes() {
   DB_TMP="$(mktemp "$DB_FILE.XXXXXX" 2>/dev/null)" || error "Failed to create temporary database file"
 
   # While Darwin supports ACLs, there is no standard output and input format for them - don't even try.
-  [[ "$PLATFORM" == "Darwin" ]] && warn "Not storing ACLs on Darwin"
+  [[ "$PLATFORM" == "Darwin" ]] && warn "Not storing ACLs or xattrs on Darwin"
 
   # File header.
   printf "# %s\\n" "This is the gitattributsdb database file." >"$DB_TMP"
@@ -90,17 +96,19 @@ store_attributes() {
     [[ "$FILE" == "$DB_FILE" ]] || [[ "$FILE" == "$DB_EXTRA" ]] && continue
 
     if [[ "$PLATFORM" == "Linux" ]]; then
-      # On Linux, we can handle ACLs too.
-      printf "%s %s %s\\n" "$(printf "%s" "$FILE" | base64 -w 0 2>/dev/null)" "$(stat --printf '%.9Y %.9X %U:%G %.4a' -- "$FILE" 2>/dev/null)" \
-          "$(getfacl -cEsp -- "$FILE" 2>/dev/null | base64 -w 0 2>/dev/null)" >>"$DB_TMP"
+      # On Linux, we can handle ACLs and xattrs too.
+      ACL="$(getfacl -cEsp -- "$FILE" 2>/dev/null | base64 -w 0 2>/dev/null)"
+      XATTR="$(getfattr -dhe base64 -- "$FILE" 2>/dev/null | base64 -w 0 2>/dev/null)"
+      printf "%s %s %s %s\\n" "$(printf "%s" "$FILE" | base64 -w 0 2>/dev/null)" "$(stat --printf '%.9Y %.9X %U:%G %.4a' -- "$FILE" 2>/dev/null)" \
+          "$(ACL:--)" "${XATTR:--}" >>"$DB_TMP"
     elif [[ "$PLATFORM" == "Darwin" ]]; then
-      # Darwin just has to be different.
+      # Darwin just has to be different, so no ACLs or xattrs.
       # Use the full path to Darwin's stat, in case there's a macports/brew/etc version installed.
       printf "%s %s\\n" "$(printf "%s" "$FILE" | base64 -b 0 2>/dev/null)" "$(/usr/bin/stat -f '%Fm %Fa %Su:%Sg %Mp%Lp' -- "$FILE" 2>/dev/null)" >>"$DB_TMP"
     fi
 
     (( COUNT++ ))
-  done < <(git ls-files -z --full-name -- . 2>/dev/null; while read -r X; do printf "%s\\0" "$(printf "%s" "$X" | base64 -d 2>/dev/null)"; done < \
+  done < <(git ls-files -z --full-name -- . 2>/dev/null; while read -r EXTRA; do printf "%s\\0" "$(printf "%s" "$EXTRA" | base64 -d 2>/dev/null)"; done < \
       <(grep -Ev '^(#|$)' "$DB_EXTRA" 2>/dev/null))
 
   # Move the temporary file into place.
@@ -109,7 +117,7 @@ store_attributes() {
   log "$COUNT entries stored"
 
   # Add the databases themselves to the commit.
-  git add --all -f -- "$DB_EXTRA" 2>/dev/null	# OK to fail silently.
+  git add --all -f -- "$DB_EXTRA" 2>/dev/null		# OK to fail silently.
   git add --all -f -- "$DB_FILE" 2>/dev/null || error "Failed to add database files to commit"
 
   return 0
@@ -126,7 +134,7 @@ restore_attributes() {
   read_db
 
   # While Darwin supports ACLs, there is no standard output and input format for them - don't even try.
-  [[ "$PLATFORM" == "Darwin" ]] && warn "Not restoring ACLs on Darwin"
+  [[ "$PLATFORM" == "Darwin" ]] && warn "Not restoring ACLs or xattrs on Darwin"
 
   # Restore from the read database.
   while read -r ID; do
@@ -151,7 +159,10 @@ restore_attributes() {
           warn "Failed to restore mtime: $FILE"
       touch -a --date="$(date --date="19700101 00:00:00 + ${DB_ATIMES[$ID]} seconds" +'%Y/%m/%d %H:%M:%S.%N' 2>/dev/null)" -- "$FILE" 2>/dev/null || \
           warn "Failed to restore atime: $FILE"
-      printf "%s" "${DB_ACLS[$ID]}" | base64 -d 2>/dev/null | setfacl -M - -- "$FILE" 2>/dev/null || warn "Failed to restore ACLs: $FILE"
+      [[ "${DB_ACLS[$ID]}" != "-" ]] && { printf "%s" "${DB_ACLS[$ID]}" | base64 -d 2>/dev/null | setfacl -M - -- "$FILE" 2>/dev/null || \
+          warn "Failed to restore ACLs: $FILE"; }
+      [[ "${DB_XATTRS[$ID]}" != "-" ]] && { printf "%s" "${DB_XATTRS[$ID]}" | base64 -d 2>/dev/null | setfattr --restore=- 2>/dev/null || \
+          warn "Failed to restore xattrs: $FILE"; }
     elif [[ "$PLATFORM" == "Darwin" ]]; then
       touch -m -d "$(date -j -r "${DB_MTIMES[$ID]%.*}" +"%Y-%m-%dT%H:%M:%S.${DB_MTIMES[$ID]#*.}")" -- "$FILE" 2>/dev/null || \
           warn "Failed to restore mtime: $FILE"

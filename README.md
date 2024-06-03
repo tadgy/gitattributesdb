@@ -45,7 +45,7 @@ You may already have these files in the `.githooks/` directory, since they may h
 If you already have those files, you only need to add the syntax to run the `gitattributesdb` script to each of those hook files.  
 Add the following in an appropriate place in those 3 files:
 ```
-.githooks/gitattributsdb/gitattributsdb "${0##*/}"
+.githooks/gitattributesdb/gitattributesdb "${0##*/}"
 ```
 
 If those files do not already exist, you need to create and activate them:
@@ -60,7 +60,7 @@ each file:
 #!/usr/bin/env bash
 
 # Store/restore the attributes of files:
-.githooks/gitattributesdb/gitattributsdb "${0##*/}"
+.githooks/gitattributesdb/gitattributesdb "${0##*/}"
 ```
 Save the changes to each file.
 
@@ -120,13 +120,13 @@ Tracking Extra Files
 This is useful, for example, to track the attributes of `/etc/shadow`, without checking that file itself into git (and thus storing sensitive data in a
 potentially publicly accessible git repository).
 
-To achieve this, the path to the file (relative to the root of the git repository) must be added to a special file, `.gitattributsdb-extra`, which should
+To achieve this, the path to the file (relative to the root of the git repository) must be added to a special file, `.gitattributesdb-extra`, which should
 be placed in the root of the repository.
 
 To add files to the "extra" files database, use:
 ```
-printf "%s" "<filename>" | base64 -w 0 >>.gitattributsdb-extra
+printf "%s" "<filename>" | base64 -w 0 >>.gitattributesdb-extra
 ```
 Where `<filename>` is a file relative to the repository root.
 
-Old files (that no longer exist on the filesystem) stored in the `.gitattributsdb-extra` file are ignored when commiting.
+Old files (that no longer exist on the filesystem) stored in the `.gitattributesdb-extra` file are ignored when commiting.

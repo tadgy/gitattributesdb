@@ -5,9 +5,9 @@
 # Licensed under the terms of the GNU General Public License version 3.
 
 # Defaults.
-DB_FILE=".gitattributsdb"		# Database file, relative to the repository root.
-DB_EXTRA=".gitattributsdb-extra"	# List of base64 encoded filenames (one per line) to also store/restore attributes for.
-					# To add entries to this file, use: printf "%s" "<filename>" | base64 -w 0 >>.gitattributsdb-extra
+DB_FILE=".gitattributesdb"		# Database file, relative to the repository root.
+DB_EXTRA=".gitattributesdb-extra"	# List of base64 encoded filenames (one per line) to also store/restore attributes for.
+					# To add entries to this file, use: printf "%s" "<filename>" | base64 -w 0 >>.gitattributesdb-extra
 					# Where '<filename>' is relative to the repository root.
 
 # Variables.
@@ -87,7 +87,7 @@ store_attributes() {
   [[ "$PLATFORM" == "Darwin" ]] && warn "Not storing ACLs or xattrs on Darwin"
 
   # File header.
-  printf "# %s\\n" "This is the gitattributsdb database file." >"$DB_TMP"
+  printf "# %s\\n" "This is the gitattributesdb database file." >"$DB_TMP"
   printf "# %s\\n\\n" "Do not manually edit this file - any changes will be overwritten." >>"$DB_TMP"
 
   # Create the database.

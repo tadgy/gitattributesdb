@@ -110,7 +110,8 @@ To update the submodule **from the root of the git repository**, use:
 (cd .githooks/gitattributesdb/ && git fetch && git merge origin/master)
 ```
 
-The submodule will now have been updated to track the latest changes in the remote "master" branch.
+The submodule will now have been updated to track the latest changes in the remote "master" branch.  The path (`.githooks/gitattributesdb/`) will need
+to be checked into your repository with the next commit.
 
 
 Tracking Extra Files

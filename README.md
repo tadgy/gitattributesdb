@@ -107,7 +107,7 @@ This allows you to pick up any fixes or updates to the tree.
 
 To update the submodule **from the root of the git repository**, use:
 ```
-(cd .githooks/gitatrributesdb/ && git fetch && git merge origin/master)
+(cd .githooks/gitattributesdb/ && git fetch && git merge origin/master)
 ```
 
 The submodule will now have been updated to track the latest changes in the remote "master" branch.

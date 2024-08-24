@@ -100,7 +100,7 @@ store_attributes() {
       ACL="$(getfacl -cEsp -- "$FILE" 2>/dev/null | base64 -w 0 2>/dev/null)"
       XATTR="$(getfattr -dhe base64 -- "$FILE" 2>/dev/null | base64 -w 0 2>/dev/null)"
       printf "%s %s %s %s\\n" "$(printf "%s" "$FILE" | base64 -w 0 2>/dev/null)" "$(stat --printf '%.9Y %.9X %U:%G %.4a' -- "$FILE" 2>/dev/null)" \
-          "$(ACL:--)" "${XATTR:--}" >>"$DB_TMP"
+          "${ACL:--}" "${XATTR:--}" >>"$DB_TMP"
     elif [[ "$PLATFORM" == "Darwin" ]]; then
       # Darwin just has to be different, so no ACLs or xattrs.
       # Use the full path to Darwin's stat, in case there's a macports/brew/etc version installed.

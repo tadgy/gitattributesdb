@@ -45,7 +45,7 @@ You may already have these files in the `.githooks/` directory, since they may h
 If you already have those files, you only need to add the syntax to run the `gitattributesdb` script to each of those hook files.  
 Add the following in an appropriate place in those 3 files:
 ```
-.githooks/gitattributesdb/gitattributesdb "${0##*/}"
+.githooks/gitattributesdb/gitattributesdb "${0##*/}" || exit $?
 ```
 
 If those files do not already exist, you need to create and activate them:
@@ -60,7 +60,7 @@ each file:
 #!/usr/bin/env bash
 
 # Store/restore the attributes of files:
-.githooks/gitattributesdb/gitattributesdb "${0##*/}"
+.githooks/gitattributesdb/gitattributesdb "${0##*/}" || exit $?
 ```
 Save the changes to each file.
 
@@ -116,17 +116,17 @@ to be checked into your repository with the next commit.
 
 Tracking Extra Files
 --------------------
-`gitattributesdb` has the ability to store/restore the attributes of extra files on the filesystem that are **not** tracked in the git repository.
+`gitattributesdb` has the ability to store/restore the attributes of extra paths on the filesystem that are **not** tracked in the git repository.
 
 This is useful, for example, to track the attributes of `/etc/shadow`, without checking that file itself into git (and thus storing sensitive data in a
 potentially publicly accessible git repository).
 
-To achieve this, the path to the file (relative to the root of the git repository) must be added to a special file, `.gitattributesdb-extra`, which should
-be placed in the root of the repository.
+To achieve this, the path (relative to the root of the git repository) must be added to a special file, `.gitattributesdb-extra`, which should be placed
+in the root of the repository.
 
-To add files to the "extra" files database, use:
+To add paths to the "extra" files database, use:
 ```
-printf "%s" "<filename>" | base64 -w 0 >>.gitattributesdb-extra
+{ printf "%s" <path> | base64 -w 0; printf "\\n"; } >>.gitattributesdb-extra
 ```
 Where `<filename>` is a file relative to the repository root.
 

@@ -7,7 +7,7 @@
 # Defaults.
 DB_FILE=".gitattributesdb"		# Database file, relative to the repository root.
 DB_EXTRA=".gitattributesdb-extra"	# List of base64 encoded paths (one per line) to also store/restore attributes for.
-					# To add entries to this file, use: printf "%s" "<path>" | base64 -w 0 >>.gitattributesdb-extra
+					# To add entries to this file, use: { printf "%s" <path> | base64 -w 0; printf "\\n"; } >>.gitattributesdb-extra
 					# Where '<path>' is relative to the repository root.
 
 # Variables.

@@ -151,4 +151,6 @@ To add paths to the "extra" files database, use:
 ```
 Where `<path>` is a path relative to the repository root.
 
+The `<path>` is expanded while being processed, so may contain bash pathname glob characters.
+
 Old paths (that no longer exist on the filesystem) stored in the `.gitattributesdb-extra` file are ignored when commiting.

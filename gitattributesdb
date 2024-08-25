@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Version: 0.0.2
-# Copyright (c) 2023:
+# Version: 0.1.0
+# Copyright (c) 2023-2024:
 #   Darren 'Tadgy' Austin <darren (at) afterdark.org.uk>
 # Licensed under the terms of the GNU General Public License version 3.
 
 # Defaults.
 DB_FILE=".gitattributesdb"		# Database file, relative to the repository root.
-DB_EXTRA=".gitattributesdb-extra"	# List of base64 encoded filenames (one per line) to also store/restore attributes for.
-					# To add entries to this file, use: printf "%s" "<filename>" | base64 -w 0 >>.gitattributesdb-extra
-					# Where '<filename>' is relative to the repository root.
+DB_EXTRA=".gitattributesdb-extra"	# List of base64 encoded paths (one per line) to also store/restore attributes for.
+					# To add entries to this file, use: printf "%s" "<path>" | base64 -w 0 >>.gitattributesdb-extra
+					# Where '<path>' is relative to the repository root.
 
 # Variables.
 declare -A DB_ACLS DB_ATIMES DB_MODES DB_MTIMES DB_OWNERSHIPS DB_XATTRS
@@ -38,8 +38,8 @@ show_help() {
 	#........1.........2.........3.........4.........5.........6.........7.........8
   cat <<-EOF
 	Usage: $SCRIPT [options] <hook name>
-	Store and restore file attributes for files within the git repository from a
-	database stored within the repository itself.
+	Store and restore attributes for paths within the git repository from a	database
+	stored within the repository itself.
 
 	Options:
 	  -h|--help		Display this help page.
@@ -49,36 +49,64 @@ show_help() {
 	full installation/usage instructions.
 
 	This program is intended to be called from git hooks, rather than directly.
+
+	Copyright (c) 2023-2024:
+	  Darren 'Tadgy' Austin <darren (at) afterdark.org.uk>
+	Licensed under the terms of the GNU General Public License version 3.
 	EOF
 }
 
 # Function to read the database into an array.
-read_db() {
-  local ACL ATIME FILENAME MODE MTIME OWNERSHIP XATTR
+read_db_entries() {
+  local ACL ATIME MODE MTIME OWNERSHIP PATHNAME XATTR
 
-  # Do nothing if the DB file doesn't exist.
-  [[ ! -e "$DB_FILE" ]] && return 0
+  # Do nothing if the DB file doesn't exist, isn't a regular file or is empty.
+  [[ ! -f "$DB_FILE" ]] || [[ ! -s "$DB_FILE" ]] && return 0
 
   # Read the file.
-  while read -r FILENAME MTIME ATIME OWNERSHIP MODE ACL XATTR; do
+  while read -r PATHNAME MTIME ATIME OWNERSHIP MODE ACL XATTR; do
     # Store the attributes in arrays.
-    DB_MTIMES[$FILENAME]="$MTIME"
-    DB_ATIMES[$FILENAME]="$ATIME"
-    DB_OWNERSHIPS[$FILENAME]="$OWNERSHIP"
-    DB_MODES[$FILENAME]="$MODE"
-    DB_ACLS[$FILENAME]="$ACL"
-    DB_XATTRS[$FILENAME]="$XATTR"
+    DB_MTIMES[$PATHNAME]="$MTIME"
+    DB_ATIMES[$PATHNAME]="$ATIME"
+    DB_OWNERSHIPS[$PATHNAME]="$OWNERSHIP"
+    DB_MODES[$PATHNAME]="$MODE"
+    DB_ACLS[$PATHNAME]="$ACL"
+    DB_XATTRS[$PATHNAME]="$XATTR"
   done < <(grep -Ev '^(#|$)' "$DB_FILE")
 
   return 0
 }
 
-# Function to store file attributes into the database.
+# Function to store path attributes into the database.
+add_db_entry() {
+  local ERR=0
+
+  [[ -z "$1" ]] && return 1
+
+  if [[ "$PLATFORM" == "Linux" ]]; then
+    # On Linux, we can handle ACLs and xattrs too.
+    ACL="$(getfacl -cEsp -- "$1" 2>/dev/null | base64 -w 0 2>/dev/null)"
+    XATTR="$(getfattr -dhe base64 -- "$1" 2>/dev/null | base64 -w 0 2>/dev/null)"
+    printf "%s %s %s %s\\n" "$(printf "%s" "$1" | base64 -w 0 2>/dev/null)" "$(stat --printf '%.9Y %.9X %U:%G %.4a' -- "$1" 2>/dev/null)" "${ACL:--}" \
+        "${XATTR:--}" >>"$DB_TMP" || { warn "Failed to add database entry: $1"; ERR=1; }
+  elif [[ "$PLATFORM" == "Darwin" ]]; then
+    # Darwin just has to be different, so no ACLs or xattrs.
+    # Use the full path to Darwin's stat, in case there's a macports/brew/etc version installed.
+    printf "%s %s\\n" "$(printf "%s" "$1" | base64 -b 0 2>/dev/null)" "$(/usr/bin/stat -f '%Fm %Fa %Su:%Sg %Mp%Lp' -- "$1" 2>/dev/null)" >>"$DB_TMP" || \
+        { warn "Failed to add database entry: $1"; ERR=1; }
+  else
+    error "Unsupported platform: $PLATFORM"
+  fi
+
+  return "$ERR"
+}
+
+# Process the paths to add to the database.
 store_attributes() {
-  local ACL COUNT=0 DB_TMP EXTRA FILE XATTR
+  local ACL ADD_COUNT=0 DB_TMP ERR_COUNT=0 EXTRA NAME PATHNAME XATTR
 
   # Informational message.
-  log "Storing file attributes into database"
+  log "Storing path attributes into database"
 
   # Use a temporary file for the new database.
   DB_TMP="$(mktemp "$DB_FILE.XXXXXX" 2>/dev/null)" || error "Failed to create temporary database file"
@@ -91,30 +119,40 @@ store_attributes() {
   printf "# %s\\n\\n" "Do not manually edit this file - any changes will be overwritten." >>"$DB_TMP"
 
   # Create the database.
-  while read -r -d $'\0' FILE; do
+  while read -r -d $'\0' PATHNAME; do
     # No need to process the database files themselves.
-    [[ "$FILE" == "$DB_FILE" ]] || [[ "$FILE" == "$DB_EXTRA" ]] && continue
+    [[ "$PATHNAME" == "$DB_FILE" ]] || [[ "$PATHNAME" == "$DB_EXTRA" ]] && continue
 
-    if [[ "$PLATFORM" == "Linux" ]]; then
-      # On Linux, we can handle ACLs and xattrs too.
-      ACL="$(getfacl -cEsp -- "$FILE" 2>/dev/null | base64 -w 0 2>/dev/null)"
-      XATTR="$(getfattr -dhe base64 -- "$FILE" 2>/dev/null | base64 -w 0 2>/dev/null)"
-      printf "%s %s %s %s\\n" "$(printf "%s" "$FILE" | base64 -w 0 2>/dev/null)" "$(stat --printf '%.9Y %.9X %U:%G %.4a' -- "$FILE" 2>/dev/null)" \
-          "${ACL:--}" "${XATTR:--}" >>"$DB_TMP"
-    elif [[ "$PLATFORM" == "Darwin" ]]; then
-      # Darwin just has to be different, so no ACLs or xattrs.
-      # Use the full path to Darwin's stat, in case there's a macports/brew/etc version installed.
-      printf "%s %s\\n" "$(printf "%s" "$FILE" | base64 -b 0 2>/dev/null)" "$(/usr/bin/stat -f '%Fm %Fa %Su:%Sg %Mp%Lp' -- "$FILE" 2>/dev/null)" >>"$DB_TMP"
+    # Add the path's attributes to the database.
+    if add_db_entry "$PATHNAME"; then
+      (( ADD_COUNT++ ))
+    else
+      (( ERR_COUNT++ ))
     fi
+  done < <(git ls-files -z --full-name -- . 2>/dev/null)
+  while read -r -d $'\0' PATHNAME; do
+    # PATHNAME should not be quoted - it needs to be expanded.
+    for NAME in $PATHNAME; do
+      # If the path doesn't exist, ignore it.
+      [[ ! -e "$NAME" ]] && continue
 
-    (( COUNT++ ))
-  done < <(git ls-files -z --full-name -- . 2>/dev/null; while read -r EXTRA; do printf "%s\\0" "$(printf "%s" "$EXTRA" | base64 -d 2>/dev/null)"; done < \
-      <(grep -Ev '^(#|$)' "$DB_EXTRA" 2>/dev/null))
+      # No need to process the database files themselves.
+      [[ "$NAME" == "$DB_FILE" ]] || [[ "$NAME" == "$DB_EXTRA" ]] && continue
+
+      # Add the path's attributes to the database.
+      if add_db_entry "$NAME"; then
+        (( ADD_COUNT++ ))
+      else
+        (( ERR_COUNT++ ))
+      fi
+    done
+  done < <(while read -r EXTRA; do printf "%s%b" "$(printf "%s" "$EXTRA" | base64 -d 2>/dev/null)" "\\0"; done < <(grep -Ev '^(#|$)' "$DB_EXTRA" 2>/dev/null))
 
   # Move the temporary file into place.
   mv -- "$DB_TMP" "$DB_FILE" 2>/dev/null || { rm -f -- "$DB_TMP"; error "Failed to move database temporary file into place"; }
 
-  log "$COUNT entries stored"
+  (( ADD_COUNT > 0 )) && log "$ADD_COUNT entries stored"
+  (( ERR_COUNT > 0 )) && warn "$ERR_COUNT failied entries"
 
   # Add the databases themselves to the commit.
   git add --all -f -- "$DB_EXTRA" 2>/dev/null		# OK to fail silently.
@@ -123,57 +161,58 @@ store_attributes() {
   return 0
 }
 
-# Function to restore file attributes from the database.
+# Function to restore path attributes from the database.
 restore_attributes() {
-  local COUNT=0 FILE ID
+  local COUNT=0 ID PATHNAME WARN
 
   # Informational message.
-  log "Restoring file attributes from database"
+  log "Restoring path attributes from database"
 
   # Read the database.
-  read_db
+  read_db_entries
 
   # While Darwin supports ACLs, there is no standard output and input format for them - don't even try.
   [[ "$PLATFORM" == "Darwin" ]] && warn "Not restoring ACLs or xattrs on Darwin"
 
   # Restore from the read database.
   while read -r ID; do
-    # Decode the filename from the array ID.
-    FILE="$(printf "%s" "$ID" | base64 -d 2>/dev/null)" || { warn "Failed to decode filename: $ID"; continue; }
+    # Decode the path name from the array ID.
+    PATHNAME="$(printf "%s" "$ID" | base64 -d 2>/dev/null)" || { warn "Failed to decode path: $ID"; continue; }
 
-    # Ignore empty filenames, or non-existant files.
-    [[ -z "$FILE" ]] || [[ ! -e "$FILE" ]] && continue
+    # Ignore empty path names, or non-existant paths.
+    [[ -z "$PATHNAME" ]] || [[ ! -e "$PATHNAME" ]] && continue
 
     # Don't restore attributes for symlinks.
-    [[ -L "$FILE" ]] && warn "Not restoring attributes for symlink: $FILE" && continue
+    [[ -L "$PATHNAME" ]] && warn "Not restoring attributes for symlink: $PATHNAME" && continue
 
     # Restore ownerships.
-    chown -- "${DB_OWNERSHIPS[$ID]}" "$FILE" 2>/dev/null || warn "Failed to restore ownership: $FILE"
+    chown -- "${DB_OWNERSHIPS[$ID]}" "$PATHNAME" 2>/dev/null || { warn "Failed to restore ownership: $PATHNAME"; WARN=1; }
 
-    # Store mode.
-    chmod -- "${DB_MODES[$ID]}" "$FILE" 2>/dev/null || warn "Failed to restore permissions: $FILE"
+    # Restore mode.
+    chmod -- "${DB_MODES[$ID]}" "$PATHNAME" 2>/dev/null || { warn "Failed to restore permissions: $PATHNAME"; WARN=1; }
 
-    # Restore ACLs on Linux.
+    # Restore {a,m}times (and ACLs on Linux).
     if [[ "$PLATFORM" == "Linux" ]]; then
-      touch -m --date="$(date --date="19700101 00:00:00 + ${DB_MTIMES[$ID]} seconds" +'%Y/%m/%d %H:%M:%S.%N' 2>/dev/null)" -- "$FILE" 2>/dev/null || \
-          warn "Failed to restore mtime: $FILE"
-      touch -a --date="$(date --date="19700101 00:00:00 + ${DB_ATIMES[$ID]} seconds" +'%Y/%m/%d %H:%M:%S.%N' 2>/dev/null)" -- "$FILE" 2>/dev/null || \
-          warn "Failed to restore atime: $FILE"
-      [[ "${DB_ACLS[$ID]}" != "-" ]] && { printf "%s" "${DB_ACLS[$ID]}" | base64 -d 2>/dev/null | setfacl -M - -- "$FILE" 2>/dev/null || \
-          warn "Failed to restore ACLs: $FILE"; }
+      touch -m --date="$(date --date="19700101 00:00:00 + ${DB_MTIMES[$ID]} seconds" +'%Y/%m/%d %H:%M:%S.%N' 2>/dev/null)" -- "$PATHNAME" 2>/dev/null || \
+          { warn "Failed to restore mtime: $PATHNAME"; WARN=1; }
+      touch -a --date="$(date --date="19700101 00:00:00 + ${DB_ATIMES[$ID]} seconds" +'%Y/%m/%d %H:%M:%S.%N' 2>/dev/null)" -- "$PATHNAME" 2>/dev/null || \
+          { warn "Failed to restore atime: $PATHNAME"; WARN=1; }
+      [[ "${DB_ACLS[$ID]}" != "-" ]] && { printf "%s" "${DB_ACLS[$ID]}" | base64 -d 2>/dev/null | setfacl -M - -- "$PATHNAME" 2>/dev/null || \
+          warn "Failed to restore ACLs: $PATHNAME"; WARN=1; }
       [[ "${DB_XATTRS[$ID]}" != "-" ]] && { printf "%s" "${DB_XATTRS[$ID]}" | base64 -d 2>/dev/null | setfattr --restore=- 2>/dev/null || \
-          warn "Failed to restore xattrs: $FILE"; }
+          warn "Failed to restore xattrs: $PATHNAME"; WARN=1; }
     elif [[ "$PLATFORM" == "Darwin" ]]; then
-      touch -m -d "$(date -j -r "${DB_MTIMES[$ID]%.*}" +"%Y-%m-%dT%H:%M:%S.${DB_MTIMES[$ID]#*.}")" -- "$FILE" 2>/dev/null || \
-          warn "Failed to restore mtime: $FILE"
-      touch -a -d "$(date -j -r "${DB_ATIMES[$ID]%.*}" +"%Y-%m-%dT%H:%M:%S.${DB_ATIMES[$ID]#*.}")" -- "$FILE" 2>/dev/null || \
-          warn "Failed to restore atime: $FILE"
+      touch -m -d "$(date -j -r "${DB_MTIMES[$ID]%.*}" +"%Y-%m-%dT%H:%M:%S.${DB_MTIMES[$ID]#*.}")" -- "$PATHNAME" 2>/dev/null || \
+          { warn "Failed to restore mtime: $PATHNAME"; WARN=1; }
+      touch -a -d "$(date -j -r "${DB_ATIMES[$ID]%.*}" +"%Y-%m-%dT%H:%M:%S.${DB_ATIMES[$ID]#*.}")" -- "$PATHNAME" 2>/dev/null || \
+          { warn "Failed to restore atime: $PATHNAME"; WARN=1; }
     fi
 
     (( COUNT++ ))
   done < <(printf "%s\\n" "${!DB_OWNERSHIPS[@]}")
 
-  log "$COUNT entries restored"
+  # shellcheck disable=SC2015
+  [[ ! -v WARN ]] && log "$COUNT entries restored" || log "$COUNT entries restored (with warnings)"
 
   return 0
 }
@@ -197,11 +236,11 @@ case "$1" in
     show_help
     ;;
   'post-checkout'|'post-merge')
-    # Restore the file attributes from the database.
+    # Restore the path attributes from the database.
     restore_attributes
     ;;
   'pre-commit')
-    # Store the file attributes into the database.
+    # Store the path attributes into the database.
     store_attributes
     ;;
   *)

@@ -1,22 +1,22 @@
 GitAttributesDB
 ===============
-This is a git hook to store/restore attributes (access/modification times, ownerships, permissions and - on Linux - ACLs, and xattrs) for files stored in
-a git repository, and for any extra files configured for attribute store/restore.
+This is a git hook to store/restore attributes (access/modification times, ownerships, permissions and - on Linux - ACLs, and xattrs) for paths stored in
+a git repository, and for any extra paths configured for attribute store/restore.
 
-This hook can be used in place of programs such as **etckeeper** to automatically (once set up) record and restore the attributes for files in your `/etc`
+This hook can be used in place of programs such as **etckeeper** to automatically (once set up) record and restore the attributes for paths in your `/etc`
 directory.
 
 I prefer this script over **etckeeper** as, once set up correctly, it is far simpler and completely automated - you do not need to run a command every time
 you commit or pull changes to your `/etc` git repository.
 
 
-Initial Set Up
---------------
+Initial Set Up In New Repository
+--------------------------------
 Git hooks are usually stored in the `.git/hooks` directory inside the local repository, and are not pushed to the remote when you `git push` or kept under
 version control.
 
 As part of the initial set up, the hooks directory will be changed to be the `.githooks/` directory inside the repository root, and hooks inside that
-directory put under version control - just like any files in the repository.
+directory put under version control - just like any paths in the repository.
 
 The `gitattributesdb` git repository will be cloned under that directory as a git **submodule**, where the script can be called directly by the appropriate
 hook files.
@@ -69,22 +69,43 @@ Configure git to use the new `.githooks/` directory rather than the default `.gi
 git config --local core.hooksPath .githooks
 ```
 
-Finally, add the submodule configuration and new hooks directory to the tracked files of the repository - this puts all the hooks under version control:
+Add the submodule configuration and new hooks directory to the tracked paths of the repository - this puts all the hooks under version control:
 ```
 git add .gitmodules .githooks/
+```
+
+Finally, unless you are setting up `gitattributesdb` in an existing repository (see below), commit the new paths into the repository:
+```
 git commit -m "Added .gitmodules file, and .githooks/ directory as the git hooks directory."
 ```
 
 Initial set up of the repository to use `gitattributesdb` is complete.  
-Whenever you commit changes to the repository, or pull new changes from a remote, the file attributes will be stored/restored.
+Whenever you commit changes to the repository, or pull new changes from a remote, the path attributes will be stored/restored.
+
+
+Set Up In An Existing Repository
+--------------------------------
+Firstly, follow the instructions above in the "Initial Set Up In New Repository" section, but DO NOT perform the final `git commit` action.
+
+Next, set the correct permissions, ownerships, ACLs and xattrs for the paths in your repository so that `gitattributesdb` can begin tracking them.
+
+Add any paths you would like to be tracked by the `.gitattributesdb-extra` functionallity - see below for details on this functionallity.  Remember to
+set the correct permissions, ownerships, ACLs and xattrs for these paths too.
+
+Now that the paths in your repository are set to be tracked by `gitattributesdb`, you can go ahead an commit everything:
+```
+git commit -m "Added .gitmodules file, .githooks/ directory and check-in gitattributes database."
+```
+
+You can now work with your repository as normal and `gitattributesdb` will track the attributes from now on.
 
 
 Set Up After A New Clone
 ------------------------
-Git does **not** store the local configuration on the remote when you push your changes.  This means that the configuration to set the hooks directory is
-lost when the repository is cloned fresh.
+Git does **not** store the local repository configuration (stored in `.git/config`) on the remote when you push your changes.  This means that the
+configuration to set the hooks directory is lost when the repository is cloned fresh.
 
-It also does not automatically pull any embedded submodules into the repository.
+It also does not automatically pull any embedded submodules into the repository when it is cloned.
 
 In this situation, you need to have git pull the `gitattributesdb` submodule, and reconfigure the newly cloned repository to use the custom git hooks
 directory:
@@ -94,10 +115,10 @@ git config --local core.hooksPath .githooks
 ```
 
 This will clone the **exact** commit of `gitattributesdb` that was originally added to the repository - it does not track the branch itself, so changes at
-the `HEAD` of the branch are not reflected in the clone.  In order to get the latest changes, use the update procedure detailed below.
+the `HEAD` of the branch are not reflected in the submodule.  In order to get the latest changes, use the update procedure detailed below.
 
 Once these commands have been run in the newly cloned repository (that has been initialised by the above procedure), everything is set for
-`gitattributesdb` to maintain the attributes for files.
+`gitattributesdb` to maintain the attributes for paths.
 
 
 Updating The Embedded `gitattributesdb` Submodule
@@ -114,7 +135,7 @@ The submodule will now have been updated to track the latest changes in the remo
 to be checked into your repository with the next commit.
 
 
-Tracking Extra Files
+Tracking Extra Paths
 --------------------
 `gitattributesdb` has the ability to store/restore the attributes of extra paths on the filesystem that are **not** tracked in the git repository.
 
@@ -128,6 +149,6 @@ To add paths to the "extra" files database, use:
 ```
 { printf "%s" <path> | base64 -w 0; printf "\\n"; } >>.gitattributesdb-extra
 ```
-Where `<filename>` is a file relative to the repository root.
+Where `<path>` is a path relative to the repository root.
 
-Old files (that no longer exist on the filesystem) stored in the `.gitattributesdb-extra` file are ignored when commiting.
+Old paths (that no longer exist on the filesystem) stored in the `.gitattributesdb-extra` file are ignored when commiting.

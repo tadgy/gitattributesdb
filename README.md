@@ -64,6 +64,9 @@ each file:
 ```
 Save the changes to each file.
 
+If you'd also like a list of paths processed by `gitattributesdb` as it stores and restores attributes, add the `-v` or `--verbose` flag after the call to
+`gitattributesdb` in the above code.
+
 Configure git to use the new `.githooks/` directory rather than the default `.git/hooks` directory:
 ```
 git config --local core.hooksPath .githooks
@@ -154,3 +157,54 @@ Where `<path>` is a path relative to the repository root.
 The `<path>` is expanded while being processed, so may contain bash pathname glob characters.
 
 Old paths (that no longer exist on the filesystem) stored in the `.gitattributesdb-extra` file are ignored when commiting.
+
+Debugging The Tracked Paths
+---------------------------
+From time to time it may be necessary to print the `.gitattributesdb` or `.gitattributesdb-extra` databases, either to determine if a path has been stored
+correctly, or because you'd like to clean up the `.gitattributesdb-extra` file.
+
+To print the `.gitattributesdb` database, first add this function to your bash shell:
+```
+print_gitattributesdb() {
+  local ACL ATIME MODE MTIME OWNERSHIP PATHNAME XATTR
+
+  [[ ! -f "$1" ]] || [[ ! -s "$1" ]] && return 0
+
+  while read -r PATHNAME MTIME ATIME OWNERSHIP MODE ACL XATTR; do
+    printf "%s: %s:\\n" "Entry" "$(printf "%s" "$PATHNAME" | base64 -d 2>/dev/null)"
+    printf "  %s: %s\\n" "Encoded path" "$PATHNAME"
+    printf "  %s: %s (%s)\\n" "Mtime" "$MTIME" "$(TZ=UTC date --date="1970-01-01 00:00:00 $MTIME seconds" +"%a %d %b %H:%M:%S.%N %Z %Y")"
+    printf "  %s: %s (%s)\\n" "Atime" "$ATIME" "$(TZ=UTC date --date="1970-01-01 00:00:00 $ATIME seconds" +"%a %d %b %H:%M:%S.%N %Z %Y")"
+    printf "  %s: %s\\n" "Ownership" "$OWNERSHIP"
+    printf "  %s: %s\\n" "Permissions" "$MODE"
+    if [[ -z "$ACL" ]] || [[ "$ACL" == "-" ]]; then
+      printf "  %s\\n" "No ACL"
+    else
+      printf "  %s:\\n" "ACL"
+      printf "%s" "$ACL" | base64 -d 2>/dev/null | awk -re '/^[^#]/ { printf "    %s\n", $1 }'
+    fi
+    if [[ -z "$XATTR" ]] || [[ "$XATTR" == "-" ]]; then
+      printf "  %s\\n" "No Xattr"
+    else
+      printf "  %s:\\n" "Xattr"
+      printf "%s" "$XATTR" | base64 -d 2>/dev/null | awk -re '/^[^#]/ { printf "    %s\n", $1 }'
+    fi
+  done < <(grep -Ev '^(#|$)' "$1")
+
+  return 0
+}
+```
+
+And use with:
+```
+print_gitattributesdb "/path/to/.gitattributesdb"
+```
+
+You can `unset` the function from your bash environment once you are done with it.
+
+To print the paths tracked as part of the `.gitattributesdb-extra` database, use:
+```
+while read -r PATHNAME; do printf "%s: %s\\n" "$PATHNAME" "$(printf "$PATHNAME" | base64 -d 2>/dev/null)"; done <"/path/to/.gitattributesdb-extra"
+```
+
+You can prune any old entries from the `.gitattributesdb-extra` database to clean things up if you wish.

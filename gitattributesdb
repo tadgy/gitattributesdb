@@ -88,7 +88,7 @@ add_db_entry() {
     # On Linux, we can handle ACLs and xattrs too.
     ACL="$(getfacl -cEsp -- "$1" 2>/dev/null | base64 -w 0 2>/dev/null)"
     XATTR="$(getfattr -dhe base64 -- "$1" 2>/dev/null | base64 -w 0 2>/dev/null)"
-    if printf "%s %s %s %s\\n" "$(printf "%s" "$1" | base64 -w 0 2>/dev/null)" "$(stat --printf '%.9Y %.9X %U:%G %.4a' -- "$1" 2>/dev/null)" "${ACL:--}" \
+    if printf "%s %s %s %s\\n" "$(printf "%s" "$1" | base64 -w 0 2>/dev/null)" "$(TZ=UTC stat --printf '%.9Y %.9X %U:%G %.4a' -- "$1" 2>/dev/null)" "${ACL:--}" \
         "${XATTR:--}" >>"$DB_TMP"; then
       (( VERBOSE == 1 )) && log "$1"
     else
@@ -98,7 +98,7 @@ add_db_entry() {
   elif [[ "$PLATFORM" == "Darwin" ]]; then
     # Darwin just has to be different, so no ACLs or xattrs.
     # Use the full path to Darwin's stat, in case there's a macports/brew/etc version installed.
-    if printf "%s %s\\n" "$(printf "%s" "$1" | base64 -b 0 2>/dev/null)" "$(/usr/bin/stat -f '%Fm %Fa %Su:%Sg %Mp%Lp' -- "$1" 2>/dev/null)" >>"$DB_TMP"; then
+    if printf "%s %s\\n" "$(printf "%s" "$1" | base64 -b 0 2>/dev/null)" "$(TZ=UTC /usr/bin/stat -f '%Fm %Fa %Su:%Sg %Mp%Lp' -- "$1" 2>/dev/null)" >>"$DB_TMP"; then
       (( VERBOSE == 1 )) && log "$1"
     else
       warn "Failed to add database entry: $1"

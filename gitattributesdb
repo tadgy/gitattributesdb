@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Version: 0.1.0
+# Version: 0.1.1
 # Copyright (c) 2023-2024:
 #   Darren 'Tadgy' Austin <darren (at) afterdark.org.uk>
 # Licensed under the terms of the GNU General Public License version 3.
@@ -13,7 +13,7 @@ DB_EXTRA=".gitattributesdb-extra"	# List of base64 encoded paths (one per line) 
 # Variables.
 declare -A DB_ACLS DB_ATIMES DB_MODES DB_MTIMES DB_OWNERSHIPS DB_XATTRS
 # shellcheck disable=SC2155
-declare PLATFORM="$(uname -s)"
+declare FUNC="" PLATFORM="$(uname -s)" VERBOSE=0
 
 # Function to output a log/info message.
 log() {
@@ -43,6 +43,7 @@ show_help() {
 
 	Options:
 	  -h|--help		Display this help page.
+	  -v|--verbose		Output path names as they are processed.
 
 	<hook name> must be one of: 'post-checkout', 'post-merge' or 'pre-commit', which
 	are the git hook names that call this hook script.  See the README.md file for
@@ -87,13 +88,22 @@ add_db_entry() {
     # On Linux, we can handle ACLs and xattrs too.
     ACL="$(getfacl -cEsp -- "$1" 2>/dev/null | base64 -w 0 2>/dev/null)"
     XATTR="$(getfattr -dhe base64 -- "$1" 2>/dev/null | base64 -w 0 2>/dev/null)"
-    printf "%s %s %s %s\\n" "$(printf "%s" "$1" | base64 -w 0 2>/dev/null)" "$(stat --printf '%.9Y %.9X %U:%G %.4a' -- "$1" 2>/dev/null)" "${ACL:--}" \
-        "${XATTR:--}" >>"$DB_TMP" || { warn "Failed to add database entry: $1"; ERR=1; }
+    if printf "%s %s %s %s\\n" "$(printf "%s" "$1" | base64 -w 0 2>/dev/null)" "$(stat --printf '%.9Y %.9X %U:%G %.4a' -- "$1" 2>/dev/null)" "${ACL:--}" \
+        "${XATTR:--}" >>"$DB_TMP"; then
+      (( VERBOSE == 1 )) && log "$1"
+    else
+      warn "Failed to add database entry: $1"
+      ERR=1
+    fi
   elif [[ "$PLATFORM" == "Darwin" ]]; then
     # Darwin just has to be different, so no ACLs or xattrs.
     # Use the full path to Darwin's stat, in case there's a macports/brew/etc version installed.
-    printf "%s %s\\n" "$(printf "%s" "$1" | base64 -b 0 2>/dev/null)" "$(/usr/bin/stat -f '%Fm %Fa %Su:%Sg %Mp%Lp' -- "$1" 2>/dev/null)" >>"$DB_TMP" || \
-        { warn "Failed to add database entry: $1"; ERR=1; }
+    if printf "%s %s\\n" "$(printf "%s" "$1" | base64 -b 0 2>/dev/null)" "$(/usr/bin/stat -f '%Fm %Fa %Su:%Sg %Mp%Lp' -- "$1" 2>/dev/null)" >>"$DB_TMP"; then
+      (( VERBOSE == 1 )) && log "$1"
+    else
+      warn "Failed to add database entry: $1"
+      ERR=1
+    fi
   else
     error "Unsupported platform: $PLATFORM"
   fi
@@ -163,7 +173,7 @@ store_attributes() {
 
 # Function to restore path attributes from the database.
 restore_attributes() {
-  local COUNT=0 ID PATHNAME WARN
+  local COUNT=0 ID PATHNAME PREV_WARN=0 WARN=0
 
   # Informational message.
   log "Restoring path attributes from database"
@@ -186,33 +196,62 @@ restore_attributes() {
     [[ -L "$PATHNAME" ]] && warn "Not restoring attributes for symlink: $PATHNAME" && continue
 
     # Restore ownerships.
-    chown -- "${DB_OWNERSHIPS[$ID]}" "$PATHNAME" 2>/dev/null || { warn "Failed to restore ownership: $PATHNAME"; WARN=1; }
+    chown -- "${DB_OWNERSHIPS[$ID]}" "$PATHNAME" 2>/dev/null || {
+      warn "Failed to restore ownership: $PATHNAME"
+      (( WARN++ ))
+    }
 
     # Restore mode.
-    chmod -- "${DB_MODES[$ID]}" "$PATHNAME" 2>/dev/null || { warn "Failed to restore permissions: $PATHNAME"; WARN=1; }
+    chmod -- "${DB_MODES[$ID]}" "$PATHNAME" 2>/dev/null || {
+      warn "Failed to restore permissions: $PATHNAME"
+      (( WARN++ ))
+    }
 
     # Restore {a,m}times (and ACLs on Linux).
     if [[ "$PLATFORM" == "Linux" ]]; then
-      touch -m --date="$(date --date="19700101 00:00:00 + ${DB_MTIMES[$ID]} seconds" +'%Y/%m/%d %H:%M:%S.%N' 2>/dev/null)" -- "$PATHNAME" 2>/dev/null || \
-          { warn "Failed to restore mtime: $PATHNAME"; WARN=1; }
-      touch -a --date="$(date --date="19700101 00:00:00 + ${DB_ATIMES[$ID]} seconds" +'%Y/%m/%d %H:%M:%S.%N' 2>/dev/null)" -- "$PATHNAME" 2>/dev/null || \
-          { warn "Failed to restore atime: $PATHNAME"; WARN=1; }
-      [[ "${DB_ACLS[$ID]}" != "-" ]] && { printf "%s" "${DB_ACLS[$ID]}" | base64 -d 2>/dev/null | setfacl -M - -- "$PATHNAME" 2>/dev/null || \
-          warn "Failed to restore ACLs: $PATHNAME"; WARN=1; }
-      [[ "${DB_XATTRS[$ID]}" != "-" ]] && { printf "%s" "${DB_XATTRS[$ID]}" | base64 -d 2>/dev/null | setfattr --restore=- 2>/dev/null || \
-          warn "Failed to restore xattrs: $PATHNAME"; WARN=1; }
+      touch -m --date="$(date --date="19700101 00:00:00 + ${DB_MTIMES[$ID]} seconds" +'%Y/%m/%d %H:%M:%S.%N' 2>/dev/null)" -- "$PATHNAME" 2>/dev/null || {
+        warn "Failed to restore mtime: $PATHNAME"
+        (( WARN++ ))
+      }
+      touch -a --date="$(date --date="19700101 00:00:00 + ${DB_ATIMES[$ID]} seconds" +'%Y/%m/%d %H:%M:%S.%N' 2>/dev/null)" -- "$PATHNAME" 2>/dev/null || {
+        warn "Failed to restore atime: $PATHNAME"
+        (( WARN++ ))
+      }
+      [[ "${DB_ACLS[$ID]}" != "-" ]] && {
+        printf "%s" "${DB_ACLS[$ID]}" | base64 -d 2>/dev/null | setfacl -M - -- "$PATHNAME" 2>/dev/null || {
+          warn "Failed to restore ACLs: $PATHNAME"
+          (( WARN++ ))
+        }
+      }
+      [[ "${DB_XATTRS[$ID]}" != "-" ]] && {
+        printf "%s" "${DB_XATTRS[$ID]}" | base64 -d 2>/dev/null | setfattr --restore=- 2>/dev/null || {
+          warn "Failed to restore xattrs: $PATHNAME"
+          (( WARN++ ))
+        }
+      }
     elif [[ "$PLATFORM" == "Darwin" ]]; then
-      touch -m -d "$(date -j -r "${DB_MTIMES[$ID]%.*}" +"%Y-%m-%dT%H:%M:%S.${DB_MTIMES[$ID]#*.}")" -- "$PATHNAME" 2>/dev/null || \
-          { warn "Failed to restore mtime: $PATHNAME"; WARN=1; }
-      touch -a -d "$(date -j -r "${DB_ATIMES[$ID]%.*}" +"%Y-%m-%dT%H:%M:%S.${DB_ATIMES[$ID]#*.}")" -- "$PATHNAME" 2>/dev/null || \
-          { warn "Failed to restore atime: $PATHNAME"; WARN=1; }
+      touch -m -d "$(date -j -r "${DB_MTIMES[$ID]%.*}" +"%Y-%m-%dT%H:%M:%S.${DB_MTIMES[$ID]#*.}")" -- "$PATHNAME" 2>/dev/null || {
+        warn "Failed to restore mtime: $PATHNAME"
+        (( WARN++ ))
+      }
+      touch -a -d "$(date -j -r "${DB_ATIMES[$ID]%.*}" +"%Y-%m-%dT%H:%M:%S.${DB_ATIMES[$ID]#*.}")" -- "$PATHNAME" 2>/dev/null || {
+        warn "Failed to restore atime: $PATHNAME"
+        (( WARN++ ))
+      }
     fi
+
+    (( VERBOSE == 1 )) && (( WARN == PREV_WARN )) && log "$PATHNAME"
+
+    PREV_WARN="$WARN"
 
     (( COUNT++ ))
   done < <(printf "%s\\n" "${!DB_OWNERSHIPS[@]}")
 
-  # shellcheck disable=SC2015
-  [[ ! -v WARN ]] && log "$COUNT entries restored" || log "$COUNT entries restored (with warnings)"
+  if (( WARN == 0 )); then
+    log "$COUNT entries restored"
+  else
+    log "$COUNT entries at least partially restored (with $WARN warnings)"
+  fi
 
   return 0
 }
@@ -226,22 +265,24 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
 pushd -- "$REPO_ROOT" >/dev/null 2>&1 || error "Failed to switch to git repository root"
 
 # Parse command line.
-(( $# == 0 )) && {
-  printf "%s: %s\\n" "${0##*/}" "missing argument" >&2
-  printf "%s: %s %s\\n" "Try" "${0##*/}" "--help" >&2
-  exit 1
-}
 case "$1" in
   '-h'|'--h'|'--help')
     show_help
+    exit 0
+    ;;
+  '-v'|'--v'|'--verbose')
+    VERBOSE=1
+    shift
     ;;
   'post-checkout'|'post-merge')
     # Restore the path attributes from the database.
-    restore_attributes
+    FUNC="restore_attributes"
+    shift
     ;;
   'pre-commit')
     # Store the path attributes into the database.
-    store_attributes
+    FUNC="store_attributes"
+    shift
     ;;
   *)
     printf "%s: %s: %s\\n" "${0##*/}" "invalid option" "$1" >&2
@@ -249,5 +290,15 @@ case "$1" in
     exit 1
     ;;
 esac
+
+# Sanity.
+[[ -z "$FUNC" ]] && {
+  printf "%s: %s\\n" "${0##*/}" "missing argument" >&2
+  printf "%s: %s %s\\n" "Try" "${0##*/}" "--help" >&2
+  exit 1
+}
+
+# Run the appropriate function.
+"$FUNC"
 
 exit 0

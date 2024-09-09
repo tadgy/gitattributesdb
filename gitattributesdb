@@ -87,7 +87,7 @@ add_db_entry() {
   if [[ "$PLATFORM" == "Linux" ]]; then
     # On Linux, we can handle ACLs and xattrs too.
     ACL="$(getfacl -cEsp -- "$1" 2>/dev/null | base64 -w 0 2>/dev/null)"
-    XATTR="$(getfattr -dhe base64 -- "$1" 2>/dev/null | base64 -w 0 2>/dev/null)"
+    XATTR="$(getfattr -dh -- "$1" 2>/dev/null | base64 -w 0 2>/dev/null)"
     if printf "%s %s %s %s\\n" "$(printf "%s" "$1" | base64 -w 0 2>/dev/null)" "$(TZ=UTC stat --printf '%.9Y %.9X %U:%G %.4a' -- "$1" 2>/dev/null)" "${ACL:--}" \
         "${XATTR:--}" >>"$DB_TMP"; then
       (( VERBOSE == 1 )) && log "$1"

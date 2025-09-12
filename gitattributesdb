@@ -209,11 +209,11 @@ restore_attributes() {
 
     # Restore {a,m}times (and ACLs on Linux).
     if [[ "$PLATFORM" == "Linux" ]]; then
-      touch -m -d "$(date -d "@${DB_MTIMES[$ID]}" +'%Y/%m/%d %H:%M:%S.%N' 2>/dev/null)" -- "$PATHNAME" 2>/dev/null || {
+      touch -m -d "$(date -d "@${DB_MTIMES[$ID]}" +'%Y-%m-%d %H:%M:%S.%N' 2>/dev/null)0" -- "$PATHNAME" 2>/dev/null || {
         warn "Failed to restore mtime: $PATHNAME"
         (( WARN++ ))
       }
-      touch -a -d "$(date -d "@${DB_ATIMES[$ID]}" +'%Y/%m/%d %H:%M:%S.%N' 2>/dev/null)" -- "$PATHNAME" 2>/dev/null || {
+      touch -a -d "$(date -d "@${DB_ATIMES[$ID]}" +'%Y-%m-%d %H:%M:%S.%N' 2>/dev/null)0" -- "$PATHNAME" 2>/dev/null || {
         warn "Failed to restore atime: $PATHNAME"
         (( WARN++ ))
       }

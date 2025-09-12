@@ -4,6 +4,8 @@
 #   Darren 'Tadgy' Austin <darren (at) afterdark.org.uk>
 # Licensed under the terms of the GNU General Public License version 3.
 
+# shellcheck disable=SC2317
+
 # Defaults.
 DB_FILE=".gitattributesdb"		# Database file, relative to the repository root.
 DB_EXTRA=".gitattributesdb-extra"	# List of base64 encoded paths (one per line) to also store/restore attributes for.

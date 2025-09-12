@@ -173,7 +173,7 @@ store_attributes() {
 
 # Function to restore path attributes from the database.
 restore_attributes() {
-  local COUNT=0 ID PATHNAME PREV_WARN=0 WARN=0
+  local COUNT=0 ID FMT PATHNAME PREV_WARN=0 WARN=0
 
   # Informational message.
   log "Restoring path attributes from database"
@@ -209,11 +209,16 @@ restore_attributes() {
 
     # Restore {a,m}times (and ACLs on Linux).
     if [[ "$PLATFORM" == "Linux" ]]; then
-      touch -m -d "$(date -d "@${DB_MTIMES[$ID]}" +'%Y-%m-%d %H:%M:%S.%N' 2>/dev/null)0" -- "$PATHNAME" 2>/dev/null || {
+      # BusyBox touch doesn't support nanosecond accuracy, so work around it.
+      FMT="%Y-%m-%d %H:%M:%S"
+      touch --help 2>&1 | grep BusyBox >/dev/null 2>&1 || {
+        FMT+=".%N"
+      }
+      touch -m -d "$(date -d "@${DB_MTIMES[$ID]}" +"$FMT" 2>/dev/null)" -- "$PATHNAME" 2>/dev/null || {
         warn "Failed to restore mtime: $PATHNAME"
         (( WARN++ ))
       }
-      touch -a -d "$(date -d "@${DB_ATIMES[$ID]}" +'%Y-%m-%d %H:%M:%S.%N' 2>/dev/null)0" -- "$PATHNAME" 2>/dev/null || {
+      touch -a -d "$(date -d "@${DB_ATIMES[$ID]}" +"$FMT" 2>/dev/null)" -- "$PATHNAME" 2>/dev/null || {
         warn "Failed to restore atime: $PATHNAME"
         (( WARN++ ))
       }

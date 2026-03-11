@@ -4,7 +4,7 @@
 #   Darren 'Tadgy' Austin <darren (at) afterdark.org.uk>
 # Licensed under the terms of the GNU General Public License version 3.
 
-# shellcheck disable=SC2317
+# shellcheck disable=SC2317,SC2329
 
 # Defaults.
 DB_FILE=".gitattributesdb"		# Database file, relative to the repository root.
@@ -115,7 +115,7 @@ add_db_entry() {
 
 # Process the paths to add to the database.
 store_attributes() {
-  local ACL ADD_COUNT=0 DB_TMP ERR_COUNT=0 EXTRA NAME PATHNAME XATTR
+  local ACL ADD_COUNT=0 DB_TMP ERR_COUNT=0 EXTRA NAME PATHCOMPONENT PATHNAME PATHRECORD XATTR
 
   # Informational message.
   log "Storing path attributes into database"
@@ -135,7 +135,17 @@ store_attributes() {
     # No need to process the database files themselves.
     [[ "$PATHNAME" == "$DB_FILE" ]] || [[ "$PATHNAME" == "$DB_EXTRA" ]] && continue
 
-    # Add the path's attributes to the database.
+    # Add all paths leading up to the file to the database.
+    PATHRECORD=""
+    while read -r -d '/' PATHCOMPONENT; do
+      if add_db_entry "$PATHCOMPONENT"; then
+        (( ADD_COUNT++ ))
+      else
+        (( ERR_COUNT++ ))
+      fi
+      PATHRECORD+="$PATHCOMPONENT/"
+    done <<<"$PATHNAME"
+    # Add the file itself to the database.
     if add_db_entry "$PATHNAME"; then
       (( ADD_COUNT++ ))
     else
@@ -151,7 +161,17 @@ store_attributes() {
       # No need to process the database files themselves.
       [[ "$NAME" == "$DB_FILE" ]] || [[ "$NAME" == "$DB_EXTRA" ]] && continue
 
-      # Add the path's attributes to the database.
+      # Add all paths leading up to the file to the database.
+      PATHRECORD=""
+      while read -r -d '/' PATHCOMPONENT; do
+        if add_db_entry "$PATHCOMPONENT"; then
+          (( ADD_COUNT++ ))
+        else
+          (( ERR_COUNT++ ))
+        fi
+        PATHRECORD+="$PATHCOMPONENT/"
+      done <<<"$NAME"
+      Add the file itself to the database.
       if add_db_entry "$NAME"; then
         (( ADD_COUNT++ ))
       else

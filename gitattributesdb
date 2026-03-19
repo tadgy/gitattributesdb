@@ -171,7 +171,7 @@ store_attributes() {
         fi
         PATHRECORD+="$PATHCOMPONENT/"
       done <<<"$NAME"
-      Add the file itself to the database.
+      # Add the file itself to the database.
       if add_db_entry "$NAME"; then
         (( ADD_COUNT++ ))
       else

@@ -115,7 +115,8 @@ add_db_entry() {
 
 # Process the paths to add to the database.
 store_attributes() {
-  local ACL ADD_COUNT=0 DB_TMP ERR_COUNT=0 EXTRA NAME PATHCOMPONENT PATHNAME PATHRECORD XATTR
+  local ACL ADD_COUNT=0 DB_TMP ERR_COUNT=0 EXTRA NAME PATHCOMPONENT PATHNAME XATTR
+  local -A SEEN
 
   # Informational message.
   log "Storing path attributes into database"
@@ -136,14 +137,15 @@ store_attributes() {
     [[ "$PATHNAME" == "$DB_FILE" ]] || [[ "$PATHNAME" == "$DB_EXTRA" ]] && continue
 
     # Add all paths leading up to the file to the database.
-    PATHRECORD=""
     while read -r -d '/' PATHCOMPONENT; do
-      if add_db_entry "$PATHCOMPONENT"; then
-        (( ADD_COUNT++ ))
-      else
-        (( ERR_COUNT++ ))
-      fi
-      PATHRECORD+="$PATHCOMPONENT/"
+      [[ ! -v SEEN['$PATHCOMPONENT'] ]] && {
+        if add_db_entry "$PATHCOMPONENT"; then
+          SEEN+=('$PATHCOMPONENT')
+          (( ADD_COUNT++ ))
+        else
+          (( ERR_COUNT++ ))
+        fi
+      }
     done <<<"$PATHNAME"
     # Add the file itself to the database.
     if add_db_entry "$PATHNAME"; then
@@ -162,14 +164,15 @@ store_attributes() {
       [[ "$NAME" == "$DB_FILE" ]] || [[ "$NAME" == "$DB_EXTRA" ]] && continue
 
       # Add all paths leading up to the file to the database.
-      PATHRECORD=""
       while read -r -d '/' PATHCOMPONENT; do
-        if add_db_entry "$PATHCOMPONENT"; then
-          (( ADD_COUNT++ ))
-        else
-          (( ERR_COUNT++ ))
-        fi
-        PATHRECORD+="$PATHCOMPONENT/"
+        [[ ! -v SEEN['$PATHCOMPONENT'] ]] && {
+          if add_db_entry "$PATHCOMPONENT"; then
+            SEEN+=('$PATHCOMPONENT')
+            (( ADD_COUNT++ ))
+          else
+            (( ERR_COUNT++ ))
+          fi
+        }
       done <<<"$NAME"
       # Add the file itself to the database.
       if add_db_entry "$NAME"; then
